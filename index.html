@@ -1,0 +1,1232 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#1e1f22">
+  <title>Arcade — лаунчер и игровой браузер</title>
+  <style>
+    :root {
+      color-scheme: dark;
+      --bg: #1e1f22;
+      --panel: #2b2d31;
+      --panel-light: #313338;
+      --text: #f2f3f5;
+      --muted: #949ba4;
+      --accent: #5865f2;
+      --green: #23a559;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text); min-height: 100vh; }
+    body[data-theme="midnight"] { --bg: #111827; --panel: #1b2537; --panel-light: #25324a; --text: #edf2ff; --muted: #a7b3c9; }
+    body[data-theme="midnight"] .servers { background: #0c1320; }
+    body[data-theme="midnight"] .sidebar, body[data-theme="midnight"] .chat-view { background: var(--panel); }
+    body[data-theme="midnight"] .side-head, body[data-theme="midnight"] .tabs-bar { background: #151f30; }
+    button, input { font: inherit; }
+    button { color: inherit; }
+    .app-titlebar { height: 36px; display: flex; align-items: center; justify-content: space-between; padding-left: 10px; background: #050505; color: #f2f3f5; user-select: none; -webkit-app-region: drag; }
+    .app-title { display: flex; align-items: center; gap: 9px; font-size: 12px; font-weight: 600; }
+    .app-title-icon { display: grid; place-items: center; width: 20px; height: 20px; border-radius: 6px; background: var(--accent); color: white; font-size: 12px; font-weight: 900; }
+    .window-controls { align-self: stretch; display: flex; -webkit-app-region: no-drag; }
+    .window-control { width: 46px; border: 0; background: transparent; color: #f2f3f5; cursor: pointer; font-size: 13px; }
+    .window-control:hover { background: #303136; }
+    .window-control.close:hover { background: #c42b1c; }
+    .app { display: grid; grid-template-columns: 72px 230px minmax(0, 1fr); height: calc(100vh - 36px); min-height: 420px; }
+    .servers { background: #17181a; padding: 14px 0; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+    .server, .brand { width: 48px; height: 48px; border: 0; border-radius: 16px; display: grid; place-items: center; cursor: pointer; transition: .18s; }
+    .brand { color: white; background: var(--accent); font-size: 23px; font-weight: 900; border-radius: 17px; }
+    .server { background: var(--panel); color: #b5bac1; font-size: 19px; position: relative; }
+    .server:hover, .server.active { border-radius: 14px; color: white; background: var(--accent); }
+    .server.active::before { content: ""; position: absolute; left: -12px; width: 4px; height: 30px; border-radius: 0 5px 5px 0; background: white; }
+    .server-separator { height: 2px; width: 32px; background: #35373c; border-radius: 2px; }
+    .sidebar { display: flex; flex-direction: column; min-height: 0; background: var(--panel); }
+    .side-head { height: 62px; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; border-bottom: 1px solid #232428; font-weight: 750; letter-spacing: .1px; }
+    .side-head span { color: var(--muted); font-size: 19px; }
+    .side-content { flex: 1; min-height: 0; overflow-y: auto; padding: 18px 10px; }
+    .section-label { margin: 0 8px 8px; color: var(--muted); text-transform: uppercase; font-size: 11px; font-weight: 800; letter-spacing: .7px; }
+    .nav-item { border: 0; width: 100%; text-align: left; border-radius: 5px; padding: 10px 11px; margin: 2px 0; background: transparent; color: #b5bac1; cursor: pointer; display: flex; align-items: center; gap: 11px; font-weight: 550; }
+    .nav-item:hover { background: #35373c; color: var(--text); }
+    .nav-item.active { color: white; background: #404249; }
+    .nav-icon { width: 20px; text-align: center; font-size: 17px; }
+    .side-spacer { height: 24px; }
+    .online { margin: 0 8px; padding: 12px; background: #232428; border-radius: 8px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+    .online strong { display: block; color: var(--green); font-size: 12px; margin-bottom: 3px; }
+    .launcher-stat { display: block; margin-top: 6px; color: var(--text); font-size: 11px; }
+    .profile { margin-top: auto; width: 100%; display: flex; align-items: center; gap: 10px; padding: 12px; border: 0; background: #232428; text-align: left; cursor: pointer; }
+    .profile:hover { background: #292a2f; }
+    .avatar { width: 34px; height: 34px; border-radius: 50%; display: grid; place-items: center; background: linear-gradient(140deg,#7884ff,#aa62d8); font-size: 14px; font-weight: 800; }
+    .profile-name { font-size: 13px; font-weight: 700; }
+    .profile-status { color: var(--muted); font-size: 11px; margin-top: 2px; }
+    .login-dialog { width: min(420px, calc(100vw - 32px)); padding: 28px; border: 1px solid #45474f; border-radius: 14px; background: #232428; color: var(--text); box-shadow: 0 20px 70px #0009; }
+    .login-dialog::backdrop { background: #000a; backdrop-filter: blur(3px); }
+    .login-dialog-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+    .login-dialog h2 { margin: 0; font-size: 19px; }
+    .login-dialog p { margin: 9px 0 22px; color: var(--muted); font-size: 13px; line-height: 1.5; }
+    .login-close { width: 30px; height: 30px; border: 0; border-radius: 6px; background: transparent; color: var(--muted); cursor: pointer; font-size: 20px; }
+    .login-close:hover { background: #35373c; color: white; }
+    .google-login { width: 100%; min-height: 42px; display: flex; justify-content: center; align-items: center; gap: 10px; border: 1px solid #5b5e66; border-radius: 7px; background: #f7f8fa; color: #25262a; font-weight: 700; cursor: pointer; }
+    .google-login:hover { background: #e9ebef; }
+    .google-mark { font-size: 18px; font-weight: 900; background: conic-gradient(from -45deg,#4285f4 0 25%,#34a853 25% 48%,#fbbc05 48% 70%,#ea4335 70%); color: transparent; background-clip: text; -webkit-background-clip: text; }
+    .login-note { margin: 14px 0 0 !important; text-align: center; font-size: 11px !important; }
+    .friend-list { display: grid; gap: 3px; }
+    .friend-item, .friend-request { width: 100%; border: 0; border-radius: 6px; padding: 9px 8px; background: transparent; color: #c7c9cf; text-align: left; cursor: pointer; }
+    .friend-item { display: flex; align-items: center; gap: 9px; }
+    .friend-item:hover, .friend-item.active { background: #35373c; color: white; }
+    .friend-avatar { flex: 0 0 30px; width: 30px; height: 30px; display: grid; place-items: center; border-radius: 50%; background: linear-gradient(140deg,#5865f2,#aa62d8); color: white; font-size: 12px; font-weight: 800; }
+    .friend-copy { min-width: 0; display: grid; gap: 3px; }
+    .friend-name, .friend-subtitle { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .friend-name { font-size: 12px; font-weight: 700; }
+    .friend-subtitle, .friend-empty { color: var(--muted); font-size: 11px; }
+    .friend-empty { padding: 7px 8px; line-height: 1.5; }
+    .friend-requests { display: grid; gap: 4px; margin-top: 10px; }
+    .friend-request { background: #232428; font-size: 11px; line-height: 1.4; }
+    .friend-request-actions { display: flex; gap: 6px; margin-top: 6px; }
+    .friend-request-actions button { border: 0; border-radius: 4px; padding: 4px 7px; background: #404249; color: var(--text); cursor: pointer; font-size: 10px; }
+    .friend-request-actions button:hover { background: var(--accent); }
+    .friend-dialog, .username-dialog { width: min(400px, calc(100vw - 32px)); padding: 24px; border: 1px solid #45474f; border-radius: 12px; background: #232428; color: var(--text); box-shadow: 0 20px 70px #0009; }
+    .friend-dialog::backdrop, .username-dialog::backdrop { background: #000a; backdrop-filter: blur(3px); }
+    .friend-dialog h2, .username-dialog h2 { margin: 0 0 8px; font-size: 18px; }
+    .friend-dialog p, .username-dialog p { margin: 0 0 16px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .friend-dialog form, .username-dialog form { display: grid; gap: 10px; }
+    .friend-dialog input, .username-dialog input { width: 100%; height: 40px; border: 1px solid #45474f; border-radius: 6px; padding: 0 11px; outline: none; background: #17181a; color: var(--text); }
+    .friend-dialog input:focus, .username-dialog input:focus { border-color: var(--accent); }
+    .friend-dialog button[type="submit"], .username-dialog button[type="submit"] { height: 40px; border: 0; border-radius: 6px; background: var(--accent); color: white; font-weight: 700; cursor: pointer; }
+    .game-dialog { width: min(420px, calc(100vw - 32px)); padding: 24px; border: 1px solid #45474f; border-radius: 12px; background: #232428; color: var(--text); box-shadow: 0 20px 70px #0009; }
+    .game-dialog::backdrop { background: #000a; backdrop-filter: blur(3px); }
+    .game-dialog h2 { margin: 0 0 8px; font-size: 18px; }
+    .game-dialog p { margin: 0 0 16px; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .game-dialog form { display: grid; gap: 10px; }
+    .game-dialog input { width: 100%; height: 40px; border: 1px solid #45474f; border-radius: 6px; padding: 0 11px; outline: none; background: #17181a; color: var(--text); }
+    .game-dialog input:focus { border-color: var(--accent); }
+    .game-dialog input[readonly] { overflow: hidden; text-overflow: ellipsis; }
+    .settings-dialog { width: min(440px, calc(100vw - 32px)); }
+    .settings-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 11px 0; border-bottom: 1px solid #383a40; font-size: 13px; }
+    .settings-row input[type="color"] { width: 42px; height: 32px; border: 0; padding: 0; background: transparent; cursor: pointer; }
+    .settings-row select { min-height: 34px; border: 1px solid #45474f; border-radius: 6px; padding: 0 8px; background: #17181a; color: var(--text); }
+    .settings-row input[type="checkbox"] { width: 18px; height: 18px; accent-color: var(--accent); }
+    .game-dialog button[type="submit"] { height: 40px; border: 0; border-radius: 6px; background: var(--accent); color: white; font-weight: 700; cursor: pointer; }
+    .game-executable-picker { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 7px; }
+    .game-executable-picker button { border: 1px solid #45474f; border-radius: 6px; background: #35373c; padding: 0 10px; cursor: pointer; }
+    .chat-view { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; background: #232428; }
+    .chat-view[hidden] { display: none; }
+    .main.chat-mode .tabs-bar, .main.chat-mode .toolbar, .main.chat-mode .content { display: none; }
+    .chat-empty { flex: 1; display: grid; place-content: center; gap: 9px; color: var(--muted); text-align: center; }
+    .chat-empty strong { color: var(--text); font-size: 18px; }
+    .chat-thread { min-height: 0; flex: 1; display: flex; flex-direction: column; }
+    .chat-head { min-height: 64px; display: flex; align-items: center; gap: 11px; padding: 0 22px; border-bottom: 1px solid #17181a; }
+    .chat-head .friend-avatar { width: 36px; height: 36px; flex-basis: 36px; font-size: 14px; }
+    .chat-head-copy { display: grid; gap: 3px; }
+    .chat-head-name { font-size: 14px; font-weight: 750; }
+    .chat-head-status { color: var(--muted); font-size: 11px; }
+    .chat-call-controls { display: flex; align-items: center; gap: 7px; margin-left: auto; }
+    .chat-call-status { color: var(--muted); font-size: 11px; }
+    .chat-call-button { min-height: 32px; border: 0; border-radius: 6px; padding: 0 10px; background: #404249; color: var(--text); cursor: pointer; font-size: 12px; }
+    .chat-call-button:hover { background: var(--accent); }
+    .chat-call-button:disabled { opacity: .5; cursor: not-allowed; }
+    .chat-call-button.end { background: #b4232f; }
+    .incoming-call-dialog { width: min(360px, calc(100vw - 32px)); padding: 24px; border: 1px solid #45474f; border-radius: 12px; background: #232428; color: var(--text); box-shadow: 0 20px 70px #0009; }
+    .incoming-call-dialog::backdrop { background: #000a; backdrop-filter: blur(3px); }
+    .incoming-call-dialog h2 { margin: 0 0 8px; font-size: 18px; }
+    .incoming-call-dialog p { margin: 0 0 18px; color: var(--muted); font-size: 13px; }
+    .incoming-call-actions { display: flex; gap: 9px; }
+    .incoming-call-actions button { flex: 1; min-height: 38px; border: 0; border-radius: 6px; background: var(--accent); color: white; cursor: pointer; font-weight: 700; }
+    .incoming-call-actions #reject-call { background: #b4232f; }
+    .incoming-call-actions button:disabled { opacity: .55; cursor: wait; }
+    .chat-messages { flex: 1; min-height: 0; overflow-y: auto; padding: 18px 24px; display: flex; flex-direction: column; gap: 9px; }
+    .chat-message { max-width: min(72%, 640px); align-self: flex-start; padding: 9px 12px; border-radius: 12px 12px 12px 3px; background: #313338; color: var(--text); font-size: 13px; line-height: 1.45; overflow-wrap: anywhere; white-space: pre-wrap; }
+    .chat-message.mine { align-self: flex-end; border-radius: 12px 12px 3px 12px; background: #454bb5; }
+    .chat-message-time { display: block; margin-top: 4px; color: #c6c7d1; font-size: 10px; text-align: right; }
+    .chat-compose { display: flex; gap: 9px; padding: 12px 18px 18px; }
+    .chat-compose input { min-width: 0; flex: 1; height: 42px; border: 1px solid #45474f; border-radius: 7px; padding: 0 12px; outline: none; background: #17181a; color: var(--text); }
+    .chat-compose input:focus { border-color: var(--accent); }
+    .chat-compose button { width: 44px; height: 42px; border: 0; border-radius: 7px; background: var(--accent); color: white; cursor: pointer; font-size: 18px; }
+    .chat-compose button:disabled { opacity: .5; cursor: wait; }
+    .main { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+    .tabs-bar { display: flex; align-items: center; gap: 5px; min-height: 40px; padding: 5px 12px 0; overflow-x: auto; background: #1b1c1f; }
+    .browser-tab { display: flex; align-items: center; gap: 9px; min-width: 120px; max-width: 210px; height: 34px; padding: 0 9px 0 12px; border: 0; border-radius: 7px 7px 0 0; background: #27282c; color: #b5bac1; cursor: pointer; font-size: 12px; }
+    .browser-tab:hover { background: #303136; color: var(--text); }
+    .browser-tab.active { background: #232428; color: var(--text); }
+    .tab-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; text-align: left; }
+    .tab-close { flex: 0 0 20px; width: 20px; height: 20px; border: 0; border-radius: 5px; background: transparent; color: var(--muted); cursor: pointer; font-size: 16px; line-height: 1; }
+    .tab-close:hover { background: #45474f; color: white; }
+    .add-tab { flex: 0 0 30px; width: 30px; height: 30px; border: 0; border-radius: 6px; background: transparent; color: #b5bac1; cursor: pointer; font-size: 21px; }
+    .add-tab:hover { background: #35373c; color: white; }
+    .toolbar { height: 62px; display: flex; align-items: center; gap: 8px; padding: 0 20px; border-bottom: 1px solid #17181a; background: #232428; }
+    .tool-button { flex: 0 0 34px; height: 34px; border: 0; border-radius: 7px; background: transparent; color: #b5bac1; cursor: pointer; font-size: 18px; }
+    .tool-button:hover { color: white; background: #35373c; }
+    .address { display: flex; align-items: center; gap: 8px; min-width: 0; flex: 1; background: #1e1f22; border-radius: 7px; height: 36px; padding: 0 11px; color: var(--muted); }
+    .address input { border: 0; outline: 0; background: transparent; color: var(--text); width: 100%; min-width: 0; font-size: 13px; }
+    .address input::placeholder { color: #777d86; }
+    .go-button { border: 0; background: var(--accent); border-radius: 6px; height: 34px; padding: 0 14px; font-size: 12px; font-weight: 700; cursor: pointer; }
+    .go-button:hover, .primary:hover { background: #4752c4; }
+    .search-suggestions { position: absolute; z-index: 10; top: 54px; left: 146px; right: 20px; overflow: hidden; border: 1px solid #42444b; border-radius: 8px; background: #232428; box-shadow: 0 12px 28px #0008; }
+    .suggestion-label { padding: 10px 13px 7px; color: var(--muted); text-transform: uppercase; font-size: 10px; font-weight: 800; letter-spacing: .7px; }
+    .suggestion-link { display: block; padding: 9px 13px; color: var(--text); font-size: 13px; text-decoration: none; }
+    .suggestion-link:hover, .suggestion-link:focus { outline: 0; background: #35373c; }
+    .suggestion-link.search-all { border-top: 1px solid #383a40; color: #c4c9ff; font-weight: 700; }
+    .content { width: min(1080px, 100%); min-height: 0; margin: 0 auto; padding: 34px 38px 60px; flex: 1; overflow: auto; }
+    .content.immersive { display: flex; flex-direction: column; width: 100%; max-width: none; margin: 0; padding: 12px; }
+    .content.immersive .hero, .content.immersive .section-heading, .content.immersive .games { display: none; }
+    .hero { min-height: 190px; border-radius: 14px; padding: 28px 32px; overflow: hidden; position: relative; background: radial-gradient(ellipse at 82% 25%,#8053d6 0,transparent 34%), linear-gradient(112deg,#3e3d9f,#5865f2 55%,#8263d3); }
+    .hero::after { content: "✦"; position: absolute; right: 10%; top: -56px; color: #ffffff1f; font-size: 260px; line-height: 1; transform: rotate(-15deg); pointer-events: none; }
+    .eyebrow { text-transform: uppercase; letter-spacing: 1.4px; font-size: 11px; font-weight: 800; color: #e4e5ff; }
+    h1 { position: relative; z-index: 1; margin: 12px 0 8px; font-size: clamp(25px,4vw,36px); letter-spacing: -.9px; }
+    .hero p { position: relative; z-index: 1; color: #e2e3ff; margin: 0; font-size: 14px; }
+    .hero-button { position: relative; z-index: 1; margin-top: 19px; border: 0; border-radius: 6px; color: #29244e; background: white; padding: 10px 15px; font-size: 12px; font-weight: 800; cursor: pointer; }
+    .section-heading { margin: 30px 0 14px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .section-heading h2 { margin: 0; font-size: 17px; }
+    .section-heading span { color: var(--muted); font-size: 12px; }
+    .library-tools { display: flex; align-items: center; gap: 8px; }
+    .library-tools select, .library-add { min-height: 34px; border: 1px solid #45474f; border-radius: 6px; padding: 0 9px; background: var(--panel); color: var(--text); font-size: 11px; }
+    .library-tools label { display: grid; gap: 4px; }
+    .library-tools label .section-label { margin: 0; font-size: 9px; }
+    .library-add { border: 0; background: var(--accent); font-weight: 750; cursor: pointer; }
+    .library-add:hover { filter: brightness(1.12); }
+    .game-stats, .game-category { color: var(--muted); font-size: 11px; }
+    .game-stats { margin: 0 0 10px; }
+    .game-card-actions { display: flex; gap: 7px; }
+    .game-card-actions .play-button { flex: 1; }
+    .remove-game { border: 1px solid #45474f; border-radius: 5px; background: transparent; padding: 0 9px; color: var(--muted); cursor: pointer; font-size: 11px; }
+    .remove-game:hover { border-color: #c42b1c; color: #ff7468; }
+    .games { display: grid; grid-template-columns: repeat(3,minmax(0,1fr)); gap: 15px; }
+    .game-card { overflow: hidden; border-radius: 10px; background: var(--panel-light); border: 1px solid #383a40; transition: transform .18s,border-color .18s; }
+    .game-card:hover { transform: translateY(-3px); border-color: #555a66; }
+    .game-art { height: 122px; display: grid; place-items: center; font-size: 52px; position: relative; }
+    .art-2048 { background: linear-gradient(135deg,#d9a24a,#f1d68c); }
+    .art-snake { background: linear-gradient(135deg,#126b58,#47b96d); }
+    .art-hex { background: linear-gradient(135deg,#33295c,#9b6df1); }
+    .game-info { padding: 13px; }
+    .game-title { display: flex; align-items: center; justify-content: space-between; gap: 6px; font-weight: 750; font-size: 14px; }
+    .favorite { border: 0; background: transparent; color: #969ba3; cursor: pointer; font-size: 19px; line-height: 1; padding: 2px; }
+    .favorite:hover, .favorite.selected { color: #f0b232; }
+    .game-description { color: var(--muted); font-size: 12px; line-height: 1.45; min-height: 35px; margin: 8px 0 12px; }
+    .play-button, .primary { width: 100%; border: 0; border-radius: 5px; background: var(--accent); padding: 9px; font-size: 12px; font-weight: 750; cursor: pointer; }
+    .empty { grid-column: 1 / -1; padding: 35px; color: var(--muted); text-align: center; background: var(--panel-light); border-radius: 9px; }
+    .search-web { display: inline-block; margin-top: 12px; color: #c4c9ff; font-weight: 700; }
+    .game-view { min-height: 0; margin-top: 20px; background: var(--panel-light); border: 1px solid #383a40; border-radius: 10px; overflow: hidden; }
+    .content.immersive .game-view { display: flex; flex: 1; flex-direction: column; margin-top: 0; }
+    .game-view-head { padding: 12px 16px; display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #42444b; font-weight: 700; font-size: 13px; }
+    .close-game { border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 18px; }
+    .game-stage { min-height: 340px; display: grid; place-items: center; padding: 22px; }
+    .board { display: grid; grid-template-columns: repeat(4, minmax(55px,76px)); gap: 8px; padding: 9px; border-radius: 8px; background: #bbada0; touch-action: none; }
+    .tile { width: 100%; aspect-ratio: 1; display: grid; place-items: center; border-radius: 5px; background: #cdc1b4; color: #776e65; font-size: 25px; font-weight: 800; }
+    .tile.filled { background: #eee4da; }
+    .tile.v4 { background: #ede0c8; }.tile.v8 { background: #f2b179; color: #fff; }.tile.v16 { background: #f59563; color: #fff; }
+    .tile.v32 { background: #f67c5f; color: #fff; }.tile.v64 { background: #f65e3b; color: #fff; }.tile.vbig { background: #edcf72; color: #fff; font-size: 20px; }
+    .game-controls { text-align: center; color: var(--muted); font-size: 12px; margin-top: 12px; }
+    .game-score { color: var(--text); font-size: 13px; margin-bottom: 9px; font-weight: 700; }
+    .restart { margin-top: 10px; border: 0; background: #4b4d56; border-radius: 5px; padding: 7px 12px; cursor: pointer; font-size: 12px; }
+    .web-view { display: flex; width: 100%; height: min(68vh,680px); min-height: 400px; border: 0; background: white; }
+    .content.immersive .web-view { flex: 1 1 auto; height: calc(100vh - 215px); min-height: 0; }
+    .web-notice { background: #232428; padding: 10px 14px; color: var(--muted); font-size: 12px; }
+    .web-notice a { color: #aab2ff; }
+    .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); border-radius: 7px; padding: 10px 15px; background: #111214; box-shadow: 0 5px 25px #0008; font-size: 13px; z-index: 5; }
+    [hidden] { display: none !important; }
+    @media (max-width: 900px) { .app { grid-template-columns: 62px 190px minmax(0,1fr); } .content { padding: 26px 22px 45px; } .games { grid-template-columns: repeat(2,minmax(0,1fr)); } }
+    @media (max-width: 640px) {
+      .app { grid-template-columns: 54px minmax(0,1fr); }
+      .servers { grid-column: 1; grid-row: 1; min-height: 100vh; }
+      .sidebar { display: none; }
+      .toolbar { padding: 0 9px; gap: 4px; }
+      .browser-tab { min-width: 105px; max-width: 155px; }
+      .tool-button { flex-basis: 29px; }
+      .go-button { padding: 0 9px; }
+      .search-suggestions { left: 95px; right: 9px; }
+      .content { padding: 20px 14px 35px; }
+      .hero { padding: 24px 20px; }
+      .games { grid-template-columns: 1fr; }
+      .game-art { height: 145px; }
+    }
+  </style>
+</head>
+<body>
+  <header class="app-titlebar" id="app-titlebar">
+    <div class="app-title"><span class="app-title-icon">A</span><span>Arcade — лаунчер и игровой браузер</span></div>
+    <div class="window-controls" aria-label="Управление окном">
+      <button class="window-control" type="button" data-window-action="minimize" aria-label="Свернуть" title="Свернуть">—</button>
+      <button class="window-control" type="button" data-window-action="maximize" aria-label="Развернуть" title="Развернуть">□</button>
+      <button class="window-control close" type="button" data-window-action="close" aria-label="Закрыть" title="Закрыть">×</button>
+    </div>
+  </header>
+  <div class="app">
+    <aside class="servers" aria-label="Серверы">
+      <button class="brand" title="Arcade" aria-label="Arcade">A</button>
+      <div class="server-separator"></div>
+      <button class="server active" title="Игровая комната" aria-label="Игровая комната">🎮</button>
+      <button class="server" id="add-game" title="Добавить игру из компьютера" aria-label="Добавить игру">＋</button>
+      <button class="server" id="add-friend" title="Добавить друга" aria-label="Добавить друга">＋</button>
+    </aside>
+
+    <aside class="sidebar">
+      <div class="side-head">Игровая комната <span>⌄</span></div>
+      <div class="side-content">
+        <div class="section-label">Игры и сайты</div>
+        <button class="nav-item active" data-page="home"><span class="nav-icon">⌂</span>Обзор</button>
+        <button class="nav-item" data-page="games"><span class="nav-icon">▦</span>Все игры</button>
+        <button class="nav-item" data-page="store"><span class="nav-icon">🛍</span>Магазин</button>
+        <button class="nav-item" data-page="library"><span class="nav-icon">▣</span>Библиотека</button>
+        <button class="nav-item" data-page="recent"><span class="nav-icon">◷</span>Недавно запущенные</button>
+        <button class="nav-item" data-page="favorites"><span class="nav-icon">☆</span>Избранное</button>
+        <button class="nav-item" id="open-settings"><span class="nav-icon">⚙</span>Настройки</button>
+        <div class="side-spacer"></div>
+        <div class="section-label">Друзья</div>
+        <div id="friends-list" class="friend-list"><div class="friend-empty">Войди в аккаунт, чтобы найти друзей.</div></div>
+        <div id="friend-requests" class="friend-requests" hidden></div>
+        <div class="side-spacer"></div>
+        <div class="section-label">Сейчас в сети</div>
+        <div class="online"><strong>● Ты в сети</strong>Игровая статистика
+          <span class="launcher-stat" id="library-game-total">Игр: 0</span>
+          <span class="launcher-stat" id="library-time-total">Время: 0 мин</span>
+        </div>
+      </div>
+      <button class="profile" id="profile-login" type="button" aria-haspopup="dialog" aria-controls="login-dialog">
+        <div class="avatar">A</div>
+        <div><div class="profile-name">Войти в аккаунт</div><div class="profile-status">Нажми, чтобы продолжить</div></div>
+      </button>
+    </aside>
+
+    <main class="main">
+      <div class="tabs-bar" id="tabs-bar" role="tablist" aria-label="Вкладки браузера"></div>
+      <form class="toolbar" id="address-form">
+        <button class="tool-button" type="button" id="back" title="Назад" aria-label="Назад">‹</button>
+        <button class="tool-button" type="button" id="forward" title="Вперёд" aria-label="Вперёд">›</button>
+        <button class="tool-button" type="button" id="reload" title="Обновить" aria-label="Обновить">↻</button>
+        <label class="address"><span aria-hidden="true">⌕</span><input id="address" type="text" placeholder="Искать сайты или игры..." autocomplete="off" aria-label="Искать сайты или игры"></label>
+        <button class="go-button" type="submit">Искать</button>
+        <div class="search-suggestions" id="search-suggestions" role="listbox" aria-label="Подсказки DuckDuckGo" hidden></div>
+      </form>
+      <div class="content">
+        <section class="hero">
+          <div class="eyebrow">Твоя игровая комната</div>
+          <h1>Играй. Отдыхай. Повторяй.</h1>
+          <p>Браузерные и установленные игры — в одном месте.</p>
+          <button class="hero-button" id="featured-play">▶ &nbsp; Играть в 2048</button>
+        </section>
+        <div class="section-heading"><h2 id="list-title">Популярные игры</h2><div class="library-tools">
+          <label><span class="section-label">Категория</span><select id="category-filter" aria-label="Фильтр по категории"><option value="">Все категории</option></select></label>
+          <label><span class="section-label">Сортировка</span><select id="library-sort" aria-label="Сортировка игр"><option value="recent">Последний запуск</option><option value="name">Название</option><option value="playtime">Время игры</option></select></label>
+          <span id="game-count"></span><button class="library-add" id="open-add-game" type="button">Добавить игру</button>
+        </div></div>
+        <section class="games" id="games" aria-live="polite"></section>
+        <section id="game-view" class="game-view" hidden></section>
+      </div>
+      <section class="chat-view" id="chat-view" hidden aria-label="Чат с другом">
+        <div class="chat-empty" id="chat-empty"><strong>Чат Arcade</strong><span>Выбери друга слева, чтобы открыть переписку.</span></div>
+        <div class="chat-thread" id="chat-thread" hidden>
+          <header class="chat-head">
+            <span class="friend-avatar" id="chat-avatar"></span>
+            <span class="chat-head-copy"><span class="chat-head-name" id="chat-name"></span><span class="chat-head-status" id="chat-call-status">Личные сообщения</span></span>
+            <div class="chat-call-controls">
+              <button class="chat-call-button" id="start-audio-call" type="button" title="Позвонить" aria-label="Начать аудиозвонок">☎ Звонок</button>
+              <button class="chat-call-button" id="toggle-call-mute" type="button" hidden>Выключить микрофон</button>
+              <button class="chat-call-button end" id="end-audio-call" type="button" hidden>Завершить</button>
+            </div>
+          </header>
+          <div class="chat-messages" id="chat-messages" aria-live="polite"></div>
+          <form class="chat-compose" id="chat-compose">
+            <input id="chat-input" type="text" maxlength="2000" placeholder="Напиши сообщение..." autocomplete="off" aria-label="Сообщение">
+            <button type="submit" aria-label="Отправить">➤</button>
+          </form>
+        </div>
+      </section>
+    </main>
+  </div>
+  <dialog class="friend-dialog" id="friend-dialog">
+    <div class="login-dialog-head">
+      <h2>Добавить друга</h2>
+      <button class="login-close" id="close-friend" type="button" aria-label="Закрыть">×</button>
+    </div>
+    <p>Найди игрока по нику Arcade.</p>
+    <form id="friend-form">
+      <input id="friend-username" type="text" maxlength="20" placeholder="Ник друга" autocomplete="off" required>
+      <button type="submit">Найти и отправить запрос</button>
+    </form>
+    <p class="login-note" id="friend-note" role="status"></p>
+  </dialog>
+  <dialog class="game-dialog" id="game-dialog" aria-labelledby="game-dialog-title">
+    <div class="login-dialog-head">
+      <h2 id="game-dialog-title">Добавить игру в библиотеку</h2>
+      <button class="login-close" id="close-game-dialog" type="button" aria-label="Закрыть">×</button>
+    </div>
+    <p>Выбери уже установленный файл игры (.exe). Arcade не скачивает и не устанавливает игру.</p>
+    <form id="game-form">
+      <input id="game-title" type="text" maxlength="60" placeholder="Название игры" required>
+      <div class="game-executable-picker">
+        <input id="game-executable" type="text" placeholder="Путь к .exe" readonly required>
+        <button id="choose-game-executable" type="button">Обзор…</button>
+      </div>
+      <input id="game-category" type="text" maxlength="30" placeholder="Категория (например, Гонки)">
+      <input id="game-args" type="text" maxlength="1000" placeholder="Параметры запуска (необязательно)">
+      <button type="submit">Сохранить в библиотеку</button>
+    </form>
+    <p class="login-note" id="game-note" role="status"></p>
+  </dialog>
+  <dialog class="game-dialog settings-dialog" id="settings-dialog" aria-labelledby="settings-title">
+    <div class="login-dialog-head">
+      <h2 id="settings-title">Настройки Arcade</h2>
+      <button class="login-close" id="close-settings" type="button" aria-label="Закрыть">×</button>
+    </div>
+    <form id="settings-form">
+      <label class="settings-row">Тема оформления
+        <select id="theme-choice"><option value="classic">Arcade Dark</option><option value="midnight">Midnight Blue</option></select>
+      </label>
+      <label class="settings-row">Цвет интерфейса
+        <input id="accent-choice" type="color" value="#5865f2" aria-label="Цвет интерфейса">
+      </label>
+      <label class="settings-row">Сворачивать в системный трей
+        <input id="tray-choice" type="checkbox">
+      </label>
+      <label class="settings-row">Автозапуск вместе с Windows
+        <input id="startup-choice" type="checkbox">
+      </label>
+      <label class="settings-row">Блокировать рекламу и известные трекеры
+        <input id="adblock-choice" type="checkbox">
+      </label>
+      <button type="submit">Сохранить настройки</button>
+    </form>
+    <p class="login-note" id="settings-note" role="status"></p>
+  </dialog>
+  <dialog class="username-dialog" id="username-dialog">
+    <h2>Придумай ник Arcade</h2>
+    <p>Друзья смогут найти тебя по нику. Используй 3–20 латинских букв, цифр или подчёркиваний.</p>
+    <form id="username-form">
+      <input id="username-input" type="text" minlength="3" maxlength="20" pattern="[A-Za-z0-9_]{3,20}" placeholder="Например, player_123" autocomplete="off" required>
+      <button type="submit">Сохранить ник</button>
+    </form>
+    <p class="login-note" id="username-note" role="status"></p>
+  </dialog>
+  <dialog class="login-dialog" id="login-dialog" aria-labelledby="login-title">
+    <div class="login-dialog-head">
+      <div>
+        <h2 id="login-title">Войти в аккаунт</h2>
+        <p>Войди, чтобы найти друзей и общаться с ними в Arcade.</p>
+      </div>
+      <button class="login-close" id="close-login" type="button" aria-label="Закрыть">×</button>
+    </div>
+    <button class="google-login" id="google-login" type="button"><span class="google-mark" aria-hidden="true">G</span>Войти через Google</button>
+    <p class="login-note" id="login-note">Откроется окно браузера для безопасного входа через Google.</p>
+  </dialog>
+  <dialog class="incoming-call-dialog" id="incoming-call-dialog" aria-labelledby="incoming-call-title">
+    <h2 id="incoming-call-title">Входящий аудиозвонок</h2>
+    <p id="incoming-call-name"></p>
+    <div class="incoming-call-actions">
+      <button id="accept-call" type="button">Ответить</button>
+      <button id="reject-call" type="button">Отклонить</button>
+    </div>
+  </dialog>
+  <audio id="call-remote-audio" autoplay></audio>
+  <div class="toast" id="toast" role="status" hidden></div>
+  <script src="./chat.bundle.js"></script>
+
+  <script>
+    const games = [
+      { id: "2048", title: "2048", description: "Соединяй плитки и доберись до 2048.", art: "art-2048", emoji: "🔢", local: true },
+      { id: "snake", title: "Snake", description: "Классическая змейка. Сколько очков наберёшь?", art: "art-snake", emoji: "🐍", url: "https://playsnake.org/" },
+      { id: "hexgl", title: "HexGL", description: "Футуристичная гонка на высокой скорости.", art: "art-hex", emoji: "🚀", url: "https://hexgl.bkcore.com/" }
+    ];
+    const storeCatalog = [
+      { id: "steam-cs2", title: "Counter-Strike 2", description: "Тактический командный шутер. Бесплатно в Steam.", category: "Шутеры", store: "Steam", emoji: "🎯" },
+      { id: "steam-dota2", title: "Dota 2", description: "Командная стратегия с героями и матчами 5 на 5. Бесплатно в Steam.", category: "Стратегии", store: "Steam", emoji: "🛡️" },
+      { id: "epic-fortnite", title: "Fortnite", description: "Королевская битва и игровые режимы. Бесплатно в Epic Games Store.", category: "Экшен", store: "Epic Games Store", emoji: "🪂" },
+      { id: "epic-rocket-league", title: "Rocket League", description: "Футбол на ракетных автомобилях. Бесплатно в Epic Games Store.", category: "Спорт", store: "Epic Games Store", emoji: "🚗" }
+    ];
+    let libraryGames = [];
+    const favorites = new Set(JSON.parse(localStorage.getItem("arcade-favorites") || "[]"));
+    const list = document.getElementById("games");
+    const gameView = document.getElementById("game-view");
+    const address = document.getElementById("address");
+    let page = "home";
+    let query = "";
+    let tabCounter = 1;
+    let activeTabId = 1;
+    const tabs = [{ id: 1, title: "Новая вкладка", state: "home", value: "", page: "home", query: "", webHistory: [], historyIndex: -1 }];
+    let board = [];
+    let score = 0;
+    let currentGame = null;
+    let toastTimer;
+    let suggestionTimer;
+    let suggestionController;
+    let suggestionQuery = "";
+    let appearanceSettings = { theme: "classic", accent: "#5865f2" };
+    try {
+      const savedAppearance = localStorage.getItem("arcade-appearance");
+      if (savedAppearance) {
+        const parsedAppearance = JSON.parse(savedAppearance);
+        if (["classic", "midnight"].includes(parsedAppearance.theme)
+          && /^#[0-9a-f]{6}$/i.test(parsedAppearance.accent)) {
+          appearanceSettings = parsedAppearance;
+        } else {
+          console.warn("Ignoring invalid saved appearance settings.");
+        }
+      }
+    } catch (error) {
+      console.warn("Could not read saved appearance settings:", error);
+    }
+
+    function applyAppearanceSettings() {
+      document.body.dataset.theme = appearanceSettings.theme;
+      document.documentElement.style.setProperty("--accent", appearanceSettings.accent);
+    }
+    applyAppearanceSettings();
+
+    function activeTab() {
+      return tabs.find(tab => tab.id === activeTabId);
+    }
+
+    function renderTabs() {
+      const tabsBar = document.getElementById("tabs-bar");
+      tabsBar.innerHTML = `${tabs.map(tab => `<div class="browser-tab ${tab.id === activeTabId ? "active" : ""}" role="tab" aria-selected="${tab.id === activeTabId}" data-tab="${tab.id}" title="${escapeHtml(tab.title)}"><span class="tab-title">${escapeHtml(tab.title)}</span><button class="tab-close" type="button" data-close-tab="${tab.id}" aria-label="Закрыть вкладку ${escapeHtml(tab.title)}">×</button></div>`).join("")}<button class="add-tab" type="button" id="add-tab" title="Новая вкладка" aria-label="Добавить вкладку">+</button>`;
+    }
+
+    function updateActiveTab(state, title, value, nextPage, nextQuery) {
+      const tab = activeTab();
+      if (!tab) return;
+      tab.state = state;
+      tab.title = title;
+      tab.value = value;
+      if (nextPage !== undefined) tab.page = nextPage;
+      if (nextQuery !== undefined) tab.query = nextQuery;
+      renderTabs();
+    }
+
+    function newTab(initialUrl = "") {
+      if (suggestionController) suggestionController.abort();
+      document.getElementById("search-suggestions").hidden = true;
+      const tab = {
+        id: ++tabCounter,
+        title: "Новая вкладка",
+        state: "home",
+        value: "",
+        page: "home",
+        query: "",
+        webHistory: [],
+        historyIndex: -1
+      };
+      tabs.push(tab);
+      activeTabId = tab.id;
+      page = "home";
+      query = "";
+      address.value = "";
+      document.querySelectorAll(".nav-item").forEach(button => button.classList.toggle("active", button.dataset.page === "home"));
+      list.hidden = false;
+      list.previousElementSibling.hidden = false;
+      document.querySelector(".content").classList.remove("immersive");
+      gameView.hidden = true;
+      currentGame = null;
+      renderGames();
+      renderTabs();
+      if (initialUrl) navigate(initialUrl, true);
+      else address.focus();
+    }
+
+    function closeTab(id) {
+      if (tabs.length === 1) {
+        const tab = tabs[0];
+        Object.assign(tab, { title: "Новая вкладка", state: "home", value: "", page: "home", query: "", webHistory: [], historyIndex: -1 });
+        activateTab(tab.id);
+        return;
+      }
+      const closedIndex = tabs.findIndex(tab => tab.id === id);
+      tabs.splice(closedIndex, 1);
+      if (activeTabId === id) {
+        activeTabId = tabs[Math.max(0, closedIndex - 1)].id;
+        activateTab(activeTabId);
+      } else {
+        renderTabs();
+      }
+    }
+
+    function activateTab(id) {
+      const tab = tabs.find(item => item.id === id);
+      if (!tab) return;
+      if (suggestionController) suggestionController.abort();
+      document.getElementById("search-suggestions").hidden = true;
+      activeTabId = tab.id;
+      page = tab.page || "home";
+      query = tab.query || "";
+      address.value = tab.state === "url" || tab.state === "search" || tab.state === "catalog" ? tab.value : "";
+      document.querySelectorAll(".nav-item").forEach(button => button.classList.toggle("active", button.dataset.page === page));
+      renderTabs();
+      document.querySelector(".content").classList.remove("immersive");
+      list.hidden = false;
+      list.previousElementSibling.hidden = false;
+      gameView.hidden = true;
+      currentGame = null;
+      if (tab.state === "url") {
+        navigate(tab.value, false);
+      } else if (tab.state === "search") {
+        showWebSearch(tab.value);
+      } else if (tab.state === "game") {
+        openGame(tab.value);
+      } else {
+        renderGames();
+      }
+    }
+
+    function showToast(message) {
+      const toast = document.getElementById("toast");
+      toast.textContent = message;
+      toast.hidden = false;
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { toast.hidden = true; }, 3200);
+    }
+
+    function isWebAddress(input) {
+      return /^[a-z][a-z\d+.-]*:\/\//i.test(input) || /^(localhost|(?:[\w-]+\.)+[\w-]+|\d{1,3}(?:\.\d{1,3}){3})(?::\d+)?(?:[/?#].*)?$/i.test(input);
+    }
+
+    function escapeHtml(value) {
+      return value.replace(/[&<>"']/g, character => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[character]));
+    }
+
+    function formatPlaytime(milliseconds) {
+      const minutes = Math.floor((milliseconds || 0) / 60000);
+      if (minutes < 60) return `${minutes} мин`;
+      const hours = Math.floor(minutes / 60);
+      return `${hours} ч ${minutes % 60} мин`;
+    }
+
+    function parseArguments(value) {
+      const args = [];
+      const matcher = /"([^"]*)"|'([^']*)'|(\S+)/g;
+      let match;
+      while ((match = matcher.exec(value)) !== null) args.push(match[1] ?? match[2] ?? match[3]);
+      return args;
+    }
+
+    function duckDuckGoUrl(term) {
+      return `https://duckduckgo.com/?q=${encodeURIComponent(term)}&kae=d`;
+    }
+
+    async function loadSearchSuggestions(term) {
+      const suggestions = document.getElementById("search-suggestions");
+      if (suggestionController) suggestionController.abort();
+      suggestionController = null;
+      suggestionQuery = term;
+      if (!term || isWebAddress(term)) {
+        suggestions.hidden = true;
+        return;
+      }
+      try {
+        const controller = new AbortController();
+        suggestionController = controller;
+        const response = await fetch(`https://ac.duckduckgo.com/ac/?q=${encodeURIComponent(term)}&type=list`, { signal: controller.signal });
+        if (!response.ok) throw new Error(`DuckDuckGo вернул ошибку ${response.status}.`);
+        const data = await response.json();
+        if (term !== suggestionQuery || !Array.isArray(data) || !Array.isArray(data[1])) return;
+        const suggestionsList = data[1].filter(item => typeof item === "string").slice(0, 6);
+        const links = suggestionsList.map(item => `<a class="suggestion-link" role="option" href="${duckDuckGoUrl(item)}" target="_blank" rel="noopener noreferrer">${escapeHtml(item)} ↗</a>`).join("");
+        suggestions.innerHTML = `<div class="suggestion-label">Подсказки DuckDuckGo</div>${links}<a class="suggestion-link search-all" role="option" href="${duckDuckGoUrl(term)}" target="_blank" rel="noopener noreferrer">Все результаты по запросу «${escapeHtml(term)}» ↗</a>`;
+        suggestions.hidden = false;
+      } catch (error) {
+        if (error.name === "AbortError" || term !== suggestionQuery) return;
+        suggestions.innerHTML = `<div class="suggestion-label">Не удалось загрузить подсказки</div><a class="suggestion-link search-all" href="${duckDuckGoUrl(term)}" target="_blank" rel="noopener noreferrer">Искать «${escapeHtml(term)}» в DuckDuckGo ↗</a>`;
+        suggestions.hidden = false;
+      }
+    }
+
+    function showWebSearch(term) {
+      const searchUrl = duckDuckGoUrl(term);
+      updateActiveTab("search", term, term, "home", term);
+      currentGame = null;
+      list.hidden = true;
+      list.previousElementSibling.hidden = true;
+      document.querySelector(".content").classList.add("immersive");
+      gameView.hidden = false;
+      gameView.innerHTML = `<div class="game-view-head"><span>DuckDuckGo — ${escapeHtml(term)}</span><button class="close-game" aria-label="Закрыть поиск">×</button></div>
+        ${createEmbeddedPage(searchUrl, `Результаты DuckDuckGo по запросу ${term}`)}`;
+      gameView.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    function openSearchInNewTab(term) {
+      newTab();
+      address.value = term;
+      query = term;
+      showWebSearch(term);
+    }
+
+    function createEmbeddedPage(url, title) {
+      const safeUrl = escapeHtml(url);
+      const safeTitle = escapeHtml(title);
+      if (window.arcadeWindow) {
+        return `<webview class="web-view" src="${safeUrl}" title="${safeTitle}" webpreferences="contextIsolation=yes,nodeIntegration=no,sandbox=yes"></webview>`;
+      }
+      return `<iframe class="web-view" src="${safeUrl}" title="${safeTitle}" sandbox="allow-scripts allow-same-origin allow-forms allow-pointer-lock allow-popups" referrerpolicy="no-referrer"></iframe>`;
+    }
+
+    function renderGames() {
+      const categoryFilter = document.getElementById("category-filter").value;
+      const candidates = page === "store" ? storeCatalog
+        : page === "library" ? libraryGames
+        : page === "recent" ? libraryGames.filter(game => game.lastPlayedAt)
+          : page === "home" ? games
+            : page === "favorites" ? [...games, ...libraryGames, ...storeCatalog]
+              : [...games, ...libraryGames];
+      const visible = candidates.filter(game => {
+        const inPage = page !== "favorites" || favorites.has(game.id);
+        const matches = `${game.title} ${game.description || ""} ${game.category || ""}`.toLowerCase().includes(query.toLowerCase());
+        const inCategory = !categoryFilter || game.category === categoryFilter;
+        return inPage && matches && inCategory;
+      });
+      const sort = document.getElementById("library-sort").value;
+      if (page !== "home") {
+        visible.sort((a, b) => sort === "name"
+          ? a.title.localeCompare(b.title)
+          : sort === "playtime"
+            ? (b.totalPlayTimeMs || 0) - (a.totalPlayTimeMs || 0)
+            : (b.lastPlayedAt || 0) - (a.lastPlayedAt || 0));
+      }
+      const hideEmptySearch = Boolean(query) && visible.length === 0;
+      list.hidden = hideEmptySearch;
+      list.previousElementSibling.hidden = hideEmptySearch;
+      document.getElementById("list-title").textContent = query ? "Результаты поиска"
+        : page === "favorites" ? "Избранное"
+          : page === "store" ? "Бесплатные игры в официальных магазинах"
+        : page === "games" ? "Все игры"
+            : page === "library" ? "Библиотека игр"
+              : page === "recent" ? "Недавно запущенные" : "Популярные игры";
+      document.getElementById("open-add-game").hidden = !["library", "games"].includes(page);
+      const categories = [...new Set([...libraryGames, ...storeCatalog].map(game => game.category).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+      const categorySelect = document.getElementById("category-filter");
+      const selectedCategory = categorySelect.value;
+      categorySelect.innerHTML = `<option value="">Все категории</option>${categories.map(category => `<option value="${escapeHtml(category)}">${escapeHtml(category)}</option>`).join("")}`;
+      if (categories.includes(selectedCategory)) categorySelect.value = selectedCategory;
+      else categorySelect.value = "";
+      const countWord = visible.length % 10 === 1 && visible.length % 100 !== 11 ? "игра" : visible.length % 10 >= 2 && visible.length % 10 <= 4 && (visible.length % 100 < 12 || visible.length % 100 > 14) ? "игры" : "игр";
+      document.getElementById("game-count").textContent = `${visible.length} ${countWord}`;
+      document.getElementById("library-game-total").textContent = `Игр: ${libraryGames.length}`;
+      document.getElementById("library-time-total").textContent = `Время: ${formatPlaytime(libraryGames.reduce((total, game) => total + (game.totalPlayTimeMs || 0), 0))}`;
+      list.innerHTML = visible.length ? visible.map(game => `
+        <article class="game-card">
+          <div class="game-art ${game.art || "art-hex"}" aria-hidden="true">${game.emoji || "🕹️"}</div>
+          <div class="game-info">
+            <div class="game-title">${escapeHtml(game.title)}<button class="favorite ${favorites.has(game.id) ? "selected" : ""}" data-favorite="${escapeHtml(game.id)}" aria-label="${favorites.has(game.id) ? "Убрать из" : "Добавить в"} избранное">${favorites.has(game.id) ? "★" : "☆"}</button></div>
+            <p class="game-description">${escapeHtml(game.description || (game.category || "Игра из библиотеки"))}</p>
+            ${game.executablePath ? `<p class="game-stats">${escapeHtml(game.category)} · Играно: ${formatPlaytime(game.totalPlayTimeMs)} · Запусков: ${game.launchCount || 0}</p>` : game.store ? `<p class="game-stats">${escapeHtml(game.store)} · ${escapeHtml(game.category)}</p>` : ""}
+            <div class="game-card-actions"><button class="play-button" ${game.executablePath ? `data-launch="${escapeHtml(game.id)}"` : game.store ? `data-install="${escapeHtml(game.id)}"` : `data-play="${escapeHtml(game.id)}"`}>${game.store ? `Открыть ${escapeHtml(game.store)}` : "Играть"}</button>
+            ${game.executablePath ? `<button class="remove-game" data-remove-game="${escapeHtml(game.id)}" title="Убрать из библиотеки">Убрать</button>` : ""}</div>
+          </div>
+        </article>`).join("") : query
+          ? `<div class="empty">В каталоге нет игр по запросу «${query.replace(/[&<>"']/g, character => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[character]))}».<br><a class="search-web" href="https://www.google.com/search?q=${encodeURIComponent(query)}" target="_blank" rel="noopener noreferrer">Искать «${query.replace(/[&<>"']/g, character => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[character]))}» в интернете ↗</a></div>`
+          : page === "library" || page === "recent"
+            ? `<div class="empty">Здесь пока нет игр. Добавь установленную игру из файла .exe.</div>`
+            : page === "store"
+              ? '<div class="empty">В каталоге пока нет игр.</div>'
+            : '<div class="empty">Пока нет игр в этом списке. Найди игру или добавь её в избранное.</div>';
+    }
+
+    function setPage(nextPage) {
+      page = nextPage;
+      updateActiveTab("catalog", query || (nextPage === "favorites" ? "Избранное" : nextPage === "games" ? "Все игры" : nextPage === "store" ? "Магазин" : nextPage === "library" ? "Библиотека" : nextPage === "recent" ? "Недавно запущенные" : "Arcade"), query, nextPage, query);
+      document.querySelectorAll(".nav-item").forEach(button => button.classList.toggle("active", button.dataset.page === page));
+      list.hidden = false;
+      list.previousElementSibling.hidden = false;
+      document.querySelector(".content").classList.remove("immersive");
+      gameView.hidden = true;
+      renderGames();
+    }
+
+    function openGame(id) {
+      currentGame = games.find(game => game.id === id);
+      if (!currentGame) return;
+      document.querySelector(".content").classList.add("immersive");
+      updateActiveTab("game", currentGame.title, id, "home", "");
+      gameView.hidden = false;
+      if (currentGame.local) {
+        start2048();
+        return;
+      }
+      const safeUrl = new URL(currentGame.url);
+      gameView.innerHTML = `<div class="game-view-head"><span>${currentGame.title}</span><button class="close-game" aria-label="Закрыть игру">×</button></div>
+        ${createEmbeddedPage(safeUrl.href, currentGame.title)}`;
+      gameView.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    function start2048() {
+      board = Array(16).fill(0);
+      score = 0;
+      addTile();
+      addTile();
+      render2048();
+      gameView.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    function addTile() {
+      const empty = board.map((value, index) => value ? -1 : index).filter(index => index >= 0);
+      if (!empty.length) return;
+      board[empty[Math.floor(Math.random() * empty.length)]] = Math.random() < .9 ? 2 : 4;
+    }
+
+    function render2048() {
+      gameView.innerHTML = `<div class="game-view-head"><span>2048</span><button class="close-game" aria-label="Закрыть игру">×</button></div>
+        <div class="game-stage"><div><div class="game-score">Счёт: ${score}</div><div class="board" role="grid" aria-label="Игровое поле 2048">${board.map(value => `<div class="tile ${value ? `filled ${value <= 64 ? `v${value}` : "vbig"}` : ""}" role="gridcell">${value || ""}</div>`).join("")}</div>
+        <div class="game-controls">Управление: стрелки на клавиатуре или свайп</div><div style="text-align:center"><button class="restart">Начать заново</button></div></div></div>`;
+    }
+
+    function move2048(direction) {
+      if (gameView.hidden || !currentGame || !currentGame.local) return;
+      const previous = board.join(",");
+      for (let line = 0; line < 4; line++) {
+        let indexes = Array.from({ length: 4 }, (_, i) => direction === "left" || direction === "right" ? line * 4 + i : i * 4 + line);
+        if (direction === "right" || direction === "down") indexes.reverse();
+        let values = indexes.map(index => board[index]).filter(Boolean);
+        for (let i = 0; i < values.length - 1; i++) {
+          if (values[i] === values[i + 1]) {
+            values[i] *= 2;
+            score += values[i];
+            values.splice(i + 1, 1);
+          }
+        }
+        values = values.concat(Array(4 - values.length).fill(0));
+        indexes.forEach((index, i) => { board[index] = values[i]; });
+      }
+      if (previous !== board.join(",")) {
+        addTile();
+        render2048();
+      }
+    }
+
+    function navigate(raw, addToHistory) {
+      const input = raw.trim();
+      if (!input) return;
+      const hasScheme = /^[a-z][a-z\d+.-]*:\/\//i.test(input);
+      if (!isWebAddress(input)) {
+        query = input;
+        page = "games";
+        setPage("games");
+        address.value = input;
+        showWebSearch(input);
+        return;
+      }
+      const candidate = hasScheme ? input : `https://${input}`;
+      let url;
+      try { url = new URL(candidate); } catch { showToast("Не удалось распознать адрес сайта."); return; }
+      if (!["http:", "https:"].includes(url.protocol)) { showToast("Поддерживаются только адреса http и https."); return; }
+      list.hidden = false;
+      list.previousElementSibling.hidden = false;
+      document.querySelector(".content").classList.add("immersive");
+      const tab = activeTab();
+      if (addToHistory) {
+        tab.webHistory = tab.webHistory.slice(0, tab.historyIndex + 1);
+        tab.webHistory.push(url.href);
+        tab.historyIndex = tab.webHistory.length - 1;
+      }
+      updateActiveTab("url", url.hostname, url.href, "home", "");
+      address.value = url.href;
+      currentGame = null;
+      gameView.hidden = false;
+      gameView.innerHTML = `<div class="game-view-head"><span>${url.hostname}</span><button class="close-game" aria-label="Закрыть сайт">×</button></div>
+        ${createEmbeddedPage(url.href, url.hostname)}`;
+      gameView.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    document.getElementById("tabs-bar").addEventListener("click", event => {
+      const closeButton = event.target.closest("[data-close-tab]");
+      if (closeButton) {
+        event.stopPropagation();
+        closeTab(Number(closeButton.dataset.closeTab));
+        return;
+      }
+      if (event.target.closest("#add-tab")) {
+        newTab();
+        return;
+      }
+      const tabElement = event.target.closest("[data-tab]");
+      if (tabElement) activateTab(Number(tabElement.dataset.tab));
+    });
+
+    document.getElementById("app-titlebar").addEventListener("click", event => {
+      const control = event.target.closest("[data-window-action]");
+      if (control && window.arcadeWindow) window.arcadeWindow.control(control.dataset.windowAction);
+    });
+    document.getElementById("app-titlebar").addEventListener("dblclick", event => {
+      if (!event.target.closest(".window-controls") && window.arcadeWindow) window.arcadeWindow.control("maximize");
+    });
+    document.getElementById("profile-login").addEventListener("click", () => {
+      document.getElementById("login-dialog").showModal();
+    });
+    document.getElementById("close-login").addEventListener("click", () => {
+      document.getElementById("login-dialog").close();
+    });
+    document.getElementById("login-dialog").addEventListener("click", event => {
+      if (event.target === event.currentTarget) event.currentTarget.close();
+    });
+    document.getElementById("google-login").addEventListener("click", async event => {
+      const button = event.currentTarget;
+      const note = document.getElementById("login-note");
+      if (!window.arcadeWindow) {
+        note.textContent = "Вход через Google доступен только в приложении Arcade.";
+        return;
+      }
+      button.disabled = true;
+      note.textContent = "Открой страницу Arcade в браузере и продолжи вход через Google.";
+      try {
+        const profile = await window.arcadeWindow.signInWithGoogle();
+        if (!window.arcadeChat) throw new Error("Чат ещё загружается. Попробуй снова через секунду.");
+        const account = await window.arcadeChat.signInWithGoogle(profile.idToken);
+        const name = account.displayName || account.username || account.email;
+        document.querySelector("#profile-login .avatar").textContent = [...name][0].toUpperCase();
+        document.querySelector("#profile-login .profile-name").textContent = name;
+        document.querySelector("#profile-login .profile-status").textContent = account.email;
+        note.textContent = `Вход выполнен как ${account.email}.`;
+        document.getElementById("login-dialog").close();
+        showToast(`Вход выполнен: ${account.email}`);
+      } catch (error) {
+        note.textContent = error.message || "Не удалось войти через Google.";
+        showToast(note.textContent);
+      } finally {
+        button.disabled = false;
+      }
+    });
+    document.getElementById("add-friend").addEventListener("click", () => {
+      if (!window.arcadeChat || !window.arcadeChat.isSignedIn()) {
+        showToast("Сначала войди через Google, чтобы добавить друга.");
+        document.getElementById("login-dialog").showModal();
+        return;
+      }
+      document.getElementById("friend-note").textContent = "";
+      document.getElementById("friend-dialog").showModal();
+      document.getElementById("friend-username").focus();
+    });
+    document.getElementById("close-friend").addEventListener("click", () => {
+      document.getElementById("friend-dialog").close();
+    });
+    document.getElementById("friend-form").addEventListener("submit", async event => {
+      event.preventDefault();
+      const input = document.getElementById("friend-username");
+      const note = document.getElementById("friend-note");
+      const button = event.currentTarget.querySelector('[type="submit"]');
+      button.disabled = true;
+      note.textContent = "Ищем игрока...";
+      try {
+        await window.arcadeChat.addFriendByUsername(input.value);
+        note.textContent = "Запрос в друзья отправлен.";
+        input.value = "";
+      } catch (error) {
+        note.textContent = error.message || "Не удалось отправить запрос.";
+      } finally {
+        button.disabled = false;
+      }
+    });
+    document.getElementById("username-form").addEventListener("submit", async event => {
+      event.preventDefault();
+      const input = document.getElementById("username-input");
+      const note = document.getElementById("username-note");
+      const button = event.currentTarget.querySelector('[type="submit"]');
+      button.disabled = true;
+      try {
+        const account = await window.arcadeChat.setUsername(input.value);
+        document.querySelector("#profile-login .avatar").textContent = [...account.username][0].toUpperCase();
+        document.querySelector("#profile-login .profile-name").textContent = account.username;
+        document.querySelector("#profile-login .profile-status").textContent = account.email;
+        document.getElementById("username-dialog").close();
+        showToast(`Твой ник: ${account.username}`);
+      } catch (error) {
+        note.textContent = error.message || "Не удалось сохранить ник.";
+      } finally {
+        button.disabled = false;
+      }
+    });
+    document.getElementById("chat-compose").addEventListener("submit", async event => {
+      event.preventDefault();
+      const input = document.getElementById("chat-input");
+      const button = event.currentTarget.querySelector('[type="submit"]');
+      const message = input.value.trim();
+      if (!message) return;
+      button.disabled = true;
+      try {
+        await window.arcadeChat.sendMessage(message);
+        input.value = "";
+      } catch (error) {
+        showToast(error.message || "Не удалось отправить сообщение.");
+      } finally {
+        button.disabled = false;
+        input.focus();
+      }
+    });
+    function updateAccountProfile(account) {
+      if (!account) return;
+      const name = account.username || account.displayName || account.email;
+      document.querySelector("#profile-login .avatar").textContent = [...name][0].toUpperCase();
+      document.querySelector("#profile-login .profile-name").textContent = name;
+      document.querySelector("#profile-login .profile-status").textContent = account.email;
+    }
+    window.addEventListener("arcade:chat-profile", event => updateAccountProfile(event.detail));
+    if (window.arcadeChat) updateAccountProfile(window.arcadeChat.getCurrentProfile());
+    window.addEventListener("arcade:chat-toast", event => showToast(event.detail));
+    window.addEventListener("arcade:chat-open", () => {
+      document.querySelector(".main").classList.add("chat-mode");
+      document.getElementById("chat-view").hidden = false;
+      document.getElementById("chat-empty").hidden = false;
+      document.getElementById("chat-thread").hidden = true;
+    });
+    async function refreshGameLibrary(library) {
+      if (!library || !Array.isArray(library.games)) throw new Error("Не удалось прочитать библиотеку игр.");
+      libraryGames = library.games;
+      renderGames();
+    }
+
+    async function openAddGameDialog() {
+      if (!window.arcadeWindow) {
+        showToast("Добавление установленной игры доступно в приложении Arcade.");
+        return;
+      }
+      document.getElementById("game-note").textContent = "";
+      document.getElementById("game-form").reset();
+      document.getElementById("game-dialog").showModal();
+    }
+
+    async function openSettingsDialog() {
+      document.getElementById("theme-choice").value = appearanceSettings.theme;
+      document.getElementById("accent-choice").value = appearanceSettings.accent;
+      document.getElementById("settings-note").textContent = "";
+      const trayInput = document.getElementById("tray-choice");
+      const startupInput = document.getElementById("startup-choice");
+      const adBlockInput = document.getElementById("adblock-choice");
+      trayInput.disabled = !window.arcadeWindow;
+      startupInput.disabled = !window.arcadeWindow;
+      adBlockInput.disabled = !window.arcadeWindow;
+      if (window.arcadeWindow) {
+        try {
+          const settings = await window.arcadeWindow.readSettings();
+          trayInput.checked = settings.minimizeToTray;
+          startupInput.checked = settings.runAtStartup;
+          adBlockInput.checked = settings.adBlockEnabled;
+        } catch (error) {
+          document.getElementById("settings-note").textContent = error.message || "Не удалось загрузить системные настройки.";
+        }
+      }
+      document.getElementById("settings-dialog").showModal();
+    }
+
+    if (window.arcadeWindow) {
+      window.arcadeWindow.onMaximized(maximized => {
+        const button = document.querySelector('[data-window-action="maximize"]');
+        button.textContent = maximized ? "❐" : "□";
+        button.title = maximized ? "Восстановить" : "Развернуть";
+        button.setAttribute("aria-label", button.title);
+      });
+      window.arcadeWindow.onOpenTab(url => {
+        try {
+          const target = new URL(url);
+          if (target.protocol === "http:" || target.protocol === "https:") newTab(target.href);
+        } catch (error) {
+          showToast("Не удалось открыть ссылку в новой вкладке.");
+        }
+      });
+      window.arcadeWindow.onGameLibraryUpdated(refreshGameLibrary);
+      window.arcadeWindow.onGameLibraryError(showToast);
+      window.arcadeWindow.readGameLibrary().then(refreshGameLibrary).catch(error => {
+        console.error("Could not load game library:", error);
+        showToast(error.message || "Не удалось загрузить библиотеку игр.");
+      });
+    }
+
+    document.getElementById("add-game").addEventListener("click", openAddGameDialog);
+    document.getElementById("open-add-game").addEventListener("click", openAddGameDialog);
+    document.getElementById("open-settings").addEventListener("click", openSettingsDialog);
+    document.getElementById("close-settings").addEventListener("click", () => {
+      document.getElementById("settings-dialog").close();
+    });
+    document.getElementById("settings-form").addEventListener("submit", async event => {
+      event.preventDefault();
+      const button = event.currentTarget.querySelector('[type="submit"]');
+      const note = document.getElementById("settings-note");
+      button.disabled = true;
+      try {
+        if (window.arcadeWindow) {
+          await window.arcadeWindow.saveSettings({
+            minimizeToTray: document.getElementById("tray-choice").checked,
+            runAtStartup: document.getElementById("startup-choice").checked,
+            adBlockEnabled: document.getElementById("adblock-choice").checked
+          });
+        }
+        appearanceSettings = {
+          theme: document.getElementById("theme-choice").value,
+          accent: document.getElementById("accent-choice").value
+        };
+        localStorage.setItem("arcade-appearance", JSON.stringify(appearanceSettings));
+        applyAppearanceSettings();
+        note.textContent = "Настройки сохранены.";
+      } catch (error) {
+        note.textContent = error.message || "Не удалось сохранить настройки.";
+      } finally {
+        button.disabled = false;
+      }
+    });
+    document.getElementById("close-game-dialog").addEventListener("click", () => {
+      document.getElementById("game-dialog").close();
+    });
+    document.getElementById("choose-game-executable").addEventListener("click", async () => {
+      try {
+        const executablePath = await window.arcadeWindow.selectGameExecutable();
+        if (!executablePath) return;
+        document.getElementById("game-executable").value = executablePath;
+        const executableName = executablePath.split(/[\\/]/).pop().replace(/\.exe$/i, "");
+        if (!document.getElementById("game-title").value) {
+          document.getElementById("game-title").value = executableName;
+        }
+      } catch (error) {
+        document.getElementById("game-note").textContent = error.message || "Не удалось выбрать файл игры.";
+      }
+    });
+    document.getElementById("game-form").addEventListener("submit", async event => {
+      event.preventDefault();
+      const form = event.currentTarget;
+      const button = form.querySelector('[type="submit"]');
+      const note = document.getElementById("game-note");
+      button.disabled = true;
+      note.textContent = "Сохраняем игру...";
+      try {
+        await window.arcadeWindow.addGame({
+          title: document.getElementById("game-title").value,
+          executablePath: document.getElementById("game-executable").value,
+          category: document.getElementById("game-category").value,
+          args: parseArguments(document.getElementById("game-args").value)
+        });
+        await refreshGameLibrary(await window.arcadeWindow.readGameLibrary());
+        document.getElementById("game-dialog").close();
+        setPage("library");
+        showToast("Игра добавлена в библиотеку.");
+      } catch (error) {
+        note.textContent = error.message || "Не удалось добавить игру.";
+      } finally {
+        button.disabled = false;
+      }
+    });
+    document.getElementById("category-filter").addEventListener("change", renderGames);
+    document.getElementById("library-sort").addEventListener("change", renderGames);
+
+    document.addEventListener("click", event => {
+      const suggestionLink = event.target.closest("#search-suggestions a.suggestion-link");
+      if (suggestionLink) {
+        event.preventDefault();
+        const term = new URL(suggestionLink.href).searchParams.get("q");
+        document.getElementById("search-suggestions").hidden = true;
+        if (term) openSearchInNewTab(term);
+        return;
+      }
+      const target = event.target.closest("button");
+      if (!target) return;
+      if (target.dataset.page) {
+        if (window.arcadeChat) window.arcadeChat.closeChat();
+        query = "";
+        address.value = "";
+        setPage(target.dataset.page);
+      } else if (target.dataset.play) {
+        openGame(target.dataset.play);
+      } else if (target.dataset.launch) {
+        window.arcadeWindow.launchGame(target.dataset.launch).then(() => {
+          showToast("Игра запущена.");
+          window.arcadeWindow.readGameLibrary().then(refreshGameLibrary).catch(error => {
+            console.error("Could not refresh game library:", error);
+            showToast(error.message || "Не удалось обновить библиотеку.");
+          });
+        }).catch(error => showToast(error.message || "Не удалось запустить игру."));
+      } else if (target.dataset.install) {
+        if (!window.arcadeWindow) {
+          showToast("Открытие магазина доступно в приложении Arcade.");
+          return;
+        }
+        window.arcadeWindow.openStoreGame(target.dataset.install).then(result => {
+          showToast(result === "arcade-tab"
+            ? "Страница игры открыта в новой вкладке Arcade."
+            : "Не удалось открыть страницу игры в Arcade.");
+        }).catch(error => showToast(error.message || "Не удалось открыть официальный магазин."));
+      } else if (target.dataset.removeGame) {
+        const game = libraryGames.find(item => item.id === target.dataset.removeGame);
+        if (!game || !confirm(`Убрать «${game.title}» из библиотеки? Файлы игры не будут удалены.`)) return;
+        window.arcadeWindow.removeGame(game.id).then(() => window.arcadeWindow.readGameLibrary())
+          .then(refreshGameLibrary)
+          .then(() => showToast("Игра убрана из библиотеки."))
+          .catch(error => showToast(error.message || "Не удалось убрать игру."));
+      } else if (target.dataset.favorite) {
+        const id = target.dataset.favorite;
+        if (favorites.has(id)) favorites.delete(id); else favorites.add(id);
+        localStorage.setItem("arcade-favorites", JSON.stringify([...favorites]));
+        renderGames();
+      } else if (target.classList.contains("close-game")) {
+        gameView.hidden = true;
+        currentGame = null;
+        document.querySelector(".content").classList.remove("immersive");
+        updateActiveTab("home", "Новая вкладка", "", "home", "");
+        renderGames();
+      } else if (target.classList.contains("restart")) {
+        start2048();
+      }
+    });
+    document.getElementById("address-form").addEventListener("submit", event => {
+      event.preventDefault();
+      document.getElementById("search-suggestions").hidden = true;
+      const input = address.value.trim();
+      if (input && !isWebAddress(input)) openSearchInNewTab(input);
+      else navigate(input, true);
+    });
+    document.getElementById("featured-play").addEventListener("click", () => openGame("2048"));
+    document.getElementById("back").addEventListener("click", () => {
+      const tab = activeTab();
+      if (tab.historyIndex > 0) navigate(tab.webHistory[--tab.historyIndex], false);
+      else showToast("Нет предыдущей страницы.");
+    });
+    document.getElementById("forward").addEventListener("click", () => {
+      const tab = activeTab();
+      if (tab.historyIndex < tab.webHistory.length - 1) navigate(tab.webHistory[++tab.historyIndex], false);
+      else showToast("Нет следующей страницы.");
+    });
+    document.getElementById("reload").addEventListener("click", () => {
+      const frame = gameView.querySelector("iframe, webview");
+      if (frame) frame.reload ? frame.reload() : frame.src = frame.src;
+      else if (currentGame && currentGame.local) start2048();
+      else showToast("Открыта главная страница.");
+    });
+    address.addEventListener("input", () => {
+      const value = address.value.trim();
+      clearTimeout(suggestionTimer);
+      if (!value) {
+        loadSearchSuggestions("");
+      } else if (!isWebAddress(value)) {
+        suggestionTimer = setTimeout(() => loadSearchSuggestions(value), 220);
+      } else {
+        loadSearchSuggestions("");
+      }
+      if (value && !isWebAddress(value)) {
+        query = value;
+        page = "games";
+        list.hidden = false;
+        list.previousElementSibling.hidden = false;
+        gameView.hidden = true;
+        document.querySelectorAll(".nav-item").forEach(button => button.classList.toggle("active", button.dataset.page === page));
+        renderGames();
+        renderTabs();
+      } else if (query) {
+        query = "";
+        renderGames();
+      }
+    });
+    document.addEventListener("click", event => {
+      if (!event.target.closest("#address-form")) document.getElementById("search-suggestions").hidden = true;
+    });
+    document.addEventListener("keydown", event => {
+      const map = { ArrowLeft: "left", ArrowRight: "right", ArrowUp: "up", ArrowDown: "down" };
+      if (map[event.key] && document.activeElement !== address) {
+        event.preventDefault();
+        move2048(map[event.key]);
+      }
+    });
+    let touchStart = null;
+    gameView.addEventListener("touchstart", event => {
+      if (event.touches.length === 1) touchStart = [event.touches[0].clientX, event.touches[0].clientY];
+    }, { passive: true });
+    gameView.addEventListener("touchend", event => {
+      if (!touchStart || !event.changedTouches.length) return;
+      const dx = event.changedTouches[0].clientX - touchStart[0];
+      const dy = event.changedTouches[0].clientY - touchStart[1];
+      if (Math.max(Math.abs(dx), Math.abs(dy)) > 25) move2048(Math.abs(dx) > Math.abs(dy) ? dx > 0 ? "right" : "left" : dy > 0 ? "down" : "up");
+      touchStart = null;
+    }, { passive: true });
+    renderGames();
+    renderTabs();
+  </script>
+</body>
+</html>

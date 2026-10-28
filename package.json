@@ -1,0 +1,47 @@
+{
+  "name": "arcade-browser",
+  "version": "1.0.0",
+  "description": "Game launcher and browser for Windows",
+  "main": "main.cjs",
+  "private": true,
+  "scripts": {
+    "build:chat": "esbuild chat.js --bundle --platform=browser --format=iife --outfile=chat.bundle.js",
+    "build:oauth": "esbuild oauth-login.js --bundle --platform=browser --format=iife --outfile=oauth-login.bundle.js",
+    "prestart": "npm run build:chat && npm run build:oauth",
+    "predist": "npm run build:chat && npm run build:oauth",
+    "start": "electron .",
+    "dist": "electron-builder --win nsis"
+  },
+  "devDependencies": {
+    "electron": "^38.2.0",
+    "electron-builder": "^26.0.12",
+    "esbuild": "^0.28.2"
+  },
+  "build": {
+    "appId": "com.arcade.browser",
+    "productName": "Arcade",
+    "files": [
+      "index.html",
+      "chat.bundle.js",
+      "oauth-login.bundle.js",
+      "main.cjs",
+      "preload.cjs",
+      "arcade-icon-2k.png",
+      "package.json"
+    ],
+    "win": {
+      "target": "nsis"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  },
+  "allowScripts": {
+    "electron@38.8.6": true,
+    "electron-winstaller@5.4.0": true
+  },
+  "dependencies": {
+    "firebase": "^13.1.0"
+  }
+}

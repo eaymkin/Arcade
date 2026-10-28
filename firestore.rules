@@ -1,0 +1,207 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() {
+      return request.auth != null;
+    }
+
+    function isMember(members) {
+      return signedIn() && members.hasAny([request.auth.uid]);
+    }
+
+    match /profiles/{userId} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn()
+        && request.auth.uid == userId
+        && request.resource.data.keys().hasOnly([
+          "username", "usernameLower", "displayName", "createdAt"
+        ])
+        && request.resource.data.usernameLower.matches("^[a-z0-9_]{3,20}$")
+        && existsAfter(/databases/$(database)/documents/usernames/$(request.resource.data.usernameLower))
+        && getAfter(/databases/$(database)/documents/usernames/$(request.resource.data.usernameLower)).data.uid == userId;
+      allow update: if signedIn()
+        && request.auth.uid == userId
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["displayName"]);
+      allow delete: if false;
+    }
+
+    match /usernames/{username} {
+      allow get: if signedIn();
+      allow list: if false;
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(["uid"])
+        && request.resource.data.uid == request.auth.uid
+        && existsAfter(/databases/$(database)/documents/profiles/$(request.auth.uid))
+        && getAfter(/databases/$(database)/documents/profiles/$(request.auth.uid)).data.usernameLower == username;
+      allow update, delete: if false;
+    }
+
+    match /friendRequests/{requestId} {
+      allow get: if signedIn()
+        && (!exists(/databases/$(database)/documents/friendRequests/$(requestId))
+          || resource.data.from == request.auth.uid
+          || resource.data.to == request.auth.uid);
+      allow list: if signedIn()
+        && (resource.data.from == request.auth.uid || resource.data.to == request.auth.uid);
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(["from", "to", "status", "createdAt"])
+        && request.resource.data.from == request.auth.uid
+        && request.resource.data.to is string
+        && request.resource.data.to != request.auth.uid
+        && request.resource.data.status == "pending"
+        && requestId == request.resource.data.from + "_" + request.resource.data.to
+        && exists(/databases/$(database)/documents/profiles/$(request.resource.data.from))
+        && exists(/databases/$(database)/documents/profiles/$(request.resource.data.to));
+      allow update: if (
+          signedIn()
+          && resource.data.from == request.auth.uid
+          && resource.data.status == "rejected"
+          && request.resource.data.from == resource.data.from
+          && request.resource.data.to == resource.data.to
+          && request.resource.data.status == "pending"
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status", "createdAt"])
+        ) || (
+          signedIn()
+          && resource.data.to == request.auth.uid
+          && resource.data.status == "pending"
+          && request.resource.data.from == resource.data.from
+          && request.resource.data.to == resource.data.to
+          && request.resource.data.status in ["accepted", "rejected"]
+          && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status", "respondedAt"])
+        );
+      allow delete: if false;
+    }
+
+    match /connections/{connectionId} {
+      allow get: if signedIn()
+        && (!exists(/databases/$(database)/documents/connections/$(connectionId))
+          || isMember(resource.data.members));
+      allow list: if isMember(resource.data.members);
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(["requestId", "members", "createdAt"])
+        && request.resource.data.requestId is string
+        && connectionId == request.resource.data.requestId
+        && request.resource.data.members is list
+        && request.resource.data.members.size() == 2
+        && isMember(request.resource.data.members)
+        && existsAfter(/databases/$(database)/documents/friendRequests/$(request.resource.data.requestId))
+        && getAfter(/databases/$(database)/documents/friendRequests/$(request.resource.data.requestId)).data.status == "accepted"
+        && getAfter(/databases/$(database)/documents/friendRequests/$(request.resource.data.requestId)).data.to == request.auth.uid
+        && request.resource.data.members.hasAll([
+          getAfter(/databases/$(database)/documents/friendRequests/$(request.resource.data.requestId)).data.from,
+          getAfter(/databases/$(database)/documents/friendRequests/$(request.resource.data.requestId)).data.to
+        ]);
+      allow update, delete: if false;
+    }
+
+    match /conversations/{conversationId} {
+      function isConversationMember() {
+        return signedIn()
+          && exists(/databases/$(database)/documents/conversations/$(conversationId))
+          && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.members;
+      }
+
+      allow get: if isMember(resource.data.members);
+      allow list: if false;
+      allow create: if signedIn()
+        && request.resource.data.keys().hasOnly(["requestId", "members", "createdAt"])
+        && request.resource.data.requestId == conversationId
+        && request.resource.data.members is list
+        && request.resource.data.members.size() == 2
+        && isMember(request.resource.data.members)
+        && existsAfter(/databases/$(database)/documents/connections/$(conversationId))
+        && getAfter(/databases/$(database)/documents/connections/$(conversationId)).data.members == request.resource.data.members;
+      allow update, delete: if false;
+
+      match /calls/{callId} {
+        allow get, list: if isConversationMember();
+        allow create: if isConversationMember()
+          && request.resource.data.keys().hasOnly(["callerId", "calleeId", "status", "createdAt"])
+          && request.resource.data.callerId == request.auth.uid
+          && request.resource.data.calleeId is string
+          && request.resource.data.calleeId != request.auth.uid
+          && request.resource.data.status == "preparing"
+          && request.resource.data.createdAt == request.time
+          && request.auth.uid in get(/databases/$(database)/documents/conversations/$(conversationId)).data.members
+          && request.resource.data.calleeId in get(/databases/$(database)/documents/conversations/$(conversationId)).data.members;
+        allow update: if isConversationMember() && (
+          (
+            resource.data.callerId == request.auth.uid
+            && resource.data.status == "preparing"
+            && request.resource.data.status == "ringing"
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status", "offer"])
+            && request.resource.data.offer is map
+            && request.resource.data.offer.keys().hasOnly(["type", "sdp"])
+            && request.resource.data.offer.type == "offer"
+            && request.resource.data.offer.sdp is string
+          ) || (
+            resource.data.calleeId == request.auth.uid
+            && resource.data.status == "ringing"
+            && request.resource.data.status == "accepted"
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status", "answer"])
+            && request.resource.data.answer is map
+            && request.resource.data.answer.keys().hasOnly(["type", "sdp"])
+            && request.resource.data.answer.type == "answer"
+            && request.resource.data.answer.sdp is string
+          ) || (
+            resource.data.calleeId == request.auth.uid
+            && resource.data.status == "ringing"
+            && request.resource.data.status == "rejected"
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status"])
+          ) || (
+            resource.data.callerId == request.auth.uid
+            && resource.data.status in ["preparing", "ringing"]
+            && request.resource.data.status == "cancelled"
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status"])
+          ) || (
+            request.auth.uid in [resource.data.callerId, resource.data.calleeId]
+            && resource.data.status == "accepted"
+            && request.resource.data.status == "ended"
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(["status"])
+          )
+        );
+        allow delete: if false;
+
+        match /callerCandidates/{candidateId} {
+          allow get, list: if isConversationMember()
+            && request.auth.uid in [
+              get(/databases/$(database)/documents/conversations/$(conversationId)/calls/$(callId)).data.callerId,
+              get(/databases/$(database)/documents/conversations/$(conversationId)/calls/$(callId)).data.calleeId
+            ];
+          allow create: if isConversationMember()
+            && get(/databases/$(database)/documents/conversations/$(conversationId)/calls/$(callId)).data.callerId == request.auth.uid
+            && request.resource.data.keys().hasOnly(["candidate", "sdpMid", "sdpMLineIndex", "usernameFragment"])
+            && request.resource.data.candidate is string;
+          allow update, delete: if false;
+        }
+
+        match /calleeCandidates/{candidateId} {
+          allow get, list: if isConversationMember()
+            && request.auth.uid in [
+              get(/databases/$(database)/documents/conversations/$(conversationId)/calls/$(callId)).data.callerId,
+              get(/databases/$(database)/documents/conversations/$(conversationId)/calls/$(callId)).data.calleeId
+            ];
+          allow create: if isConversationMember()
+            && get(/databases/$(database)/documents/conversations/$(conversationId)/calls/$(callId)).data.calleeId == request.auth.uid
+            && request.resource.data.keys().hasOnly(["candidate", "sdpMid", "sdpMLineIndex", "usernameFragment"])
+            && request.resource.data.candidate is string;
+          allow update, delete: if false;
+        }
+      }
+
+      match /messages/{messageId} {
+        allow get, list: if isConversationMember();
+        allow create: if isConversationMember()
+          && request.resource.data.keys().hasOnly(["senderId", "text", "createdAt"])
+          && request.resource.data.senderId == request.auth.uid
+          && request.resource.data.text is string
+          && request.resource.data.text.size() > 0
+          && request.resource.data.text.size() <= 2000
+          && request.resource.data.createdAt == request.time;
+        allow update, delete: if false;
+      }
+    }
+  }
+}
